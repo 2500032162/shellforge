@@ -101,23 +101,17 @@ void print_command(const Command *cmd) {
         return;
     }
     
-    printf("\n========== PIPELINE ==========\n");
+    printf("\n========= PIPELINE ========\n\n");
+    printf("Command 1\n\n");
+    printf("Arguments\n");
     
-    // Print command and arguments
-    printf("Command: ");
     for (int i = 0; i < cmd->argc; i++) {
-        printf("%s ", cmd->argv[i]);
-    }
-    printf("\n");
-    
-    printf("Arguments:\n");
-    for (int i = 0; i < cmd->argc; i++) {
-        printf("  argv[%d] = %s\n", i, cmd->argv[i]);
+        printf("argv[%d] = %s\n", i, cmd->argv[i]);
     }
     
-    printf("Input redirection: %s\n", cmd->input ? cmd->input : "None");
-    printf("Output redirection: %s\n", cmd->output ? cmd->output : "None");
-    printf("Append mode: %s\n", cmd->append ? "Yes" : "No");
-    printf("Background: %s\n", cmd->background ? "Yes" : "No");
-    printf("===============================\n");
+    printf("Input    : %s\n", cmd->input ? cmd->input : "None");
+    printf("Output   : %s\n", cmd->output ? cmd->output : "None");
+    printf("Append   : %s\n", cmd->append ? "Yes" : "No");
+    printf("Background   : %s\n", cmd->background ? "Yes" : "No");
+    printf("\n===================\n");
 }
