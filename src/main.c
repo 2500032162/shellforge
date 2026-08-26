@@ -3,6 +3,8 @@
 #include <string.h>
 #include "../include/lexer.h"
 #include "../include/token.h"
+#include "../include/parser.h"
+#include "../include/expand.h"
 #include <readline/readline.h>
 #include <readline/history.h>
 
@@ -37,13 +39,29 @@ int main(void)
             break;
         }
         
-        // Tokenize the input
-        TokenList *tokens = lexer_tokenize(line);
+        // Expand variables
+        char *expanded = expand_variables(line);
+        if (!expanded) {
+            free(line);
+            continue;
+        }
+        
+        // Tokenize the expanded input
+        TokenList *tokens = lexer_tokenize(expanded);
         if (tokens) {
             print_tokens(tokens);
+            
+            // Parse tokens into command structure
+            Command *cmd = parse_tokens(tokens);
+            if (cmd) {
+                print_command(cmd);
+                free_command(cmd);
+            }
+            
             free_token_list(tokens);
         }
         
+        free(expanded);
         free(line);
     }
     return 0;
