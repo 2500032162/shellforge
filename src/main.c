@@ -1,7 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../include/history.h"
+#include "../include/lexer.h"
+#include "../include/token.h"
+#include <readline/readline.h>
+#include <readline/history.h>
 
 int main(void)
 {
@@ -26,13 +29,21 @@ int main(void)
             continue;
         }
         add_history(line);
+        
         if (strcmp(line, "exit") == 0)
         {
             free(line);
             printf("Exiting...\n");
             break;
         }
-        printf(" YOU ENTERED : %s\n", line);
+        
+        // Tokenize the input
+        TokenList *tokens = lexer_tokenize(line);
+        if (tokens) {
+            print_tokens(tokens);
+            free_token_list(tokens);
+        }
+        
         free(line);
     }
     return 0;
