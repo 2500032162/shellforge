@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "builtin.h"
 
@@ -94,6 +95,7 @@ static int builtin_pwd(Command *cmd)
      * Display current directory.
      */
     printf("my self declared pwd\n");
+    printf("Student ID: 2500032162\n");
     printf("%s\n", current_directory);
 
     return 0;
@@ -124,6 +126,7 @@ static int builtin_echo(Command *cmd)
     }
     printf("\n");
     printf("my self declared pwd\n");
+    printf("Student ID: 2500032162\n");
     printf("\n");
 
     return 0;
@@ -181,35 +184,68 @@ int is_builtin(const Command *cmd)
 }
 
 /* =========================================================
-   EXECUTE BUILTIN
+   EXECUTE BUILTIN (with redirection support)
    ========================================================= */
 
 int execute_builtin(Command *cmd)
 {
     if (cmd == NULL || cmd->argc == 0)
-    {
         return -1;
+
+    /* Save original stdout/stdin so we can restore after redirection */
+    int saved_stdout = -1;
+    int saved_stdin  = -1;
+
+    /* Apply output redirection for builtins (echo, pwd) */
+    if (cmd->output) {
+        int flags = O_CREAT | O_WRONLY |
+                    (cmd->append ? O_APPEND : O_TRUNC);
+        int fd = open(cmd->output, flags, 0644);
+        if (fd < 0) {
+            perror("open output");
+            return -1;
+        }
+        saved_stdout = dup(STDOUT_FILENO);
+        dup2(fd, STDOUT_FILENO);
+        close(fd);
     }
+
+    /* Apply input redirection */
+    if (cmd->input) {
+        int fd = open(cmd->input, O_RDONLY);
+        if (fd < 0) {
+            perror("open input");
+            if (saved_stdout != -1) {
+                dup2(saved_stdout, STDOUT_FILENO);
+                close(saved_stdout);
+            }
+            return -1;
+        }
+        saved_stdin = dup(STDIN_FILENO);
+        dup2(fd, STDIN_FILENO);
+        close(fd);
+    }
+
+    int result = -1;
 
     if (strcmp(cmd->argv[0], "cd") == 0)
-    {
-        return builtin_cd(cmd);
+        result = builtin_cd(cmd);
+    else if (strcmp(cmd->argv[0], "pwd") == 0)
+        result = builtin_pwd(cmd);
+    else if (strcmp(cmd->argv[0], "echo") == 0)
+        result = builtin_echo(cmd);
+    else if (strcmp(cmd->argv[0], "exit") == 0)
+        result = builtin_exit(cmd);
+
+    /* Restore original stdout/stdin */
+    if (saved_stdout != -1) {
+        dup2(saved_stdout, STDOUT_FILENO);
+        close(saved_stdout);
+    }
+    if (saved_stdin != -1) {
+        dup2(saved_stdin, STDIN_FILENO);
+        close(saved_stdin);
     }
 
-    if (strcmp(cmd->argv[0], "pwd") == 0)
-    {
-        return builtin_pwd(cmd);
-    }
-
-    if (strcmp(cmd->argv[0], "echo") == 0)
-    {
-        return builtin_echo(cmd);
-    }
-
-    if (strcmp(cmd->argv[0], "exit") == 0)
-    {
-        return builtin_exit(cmd);
-    }
-
-    return -1;
+    return result;
 }

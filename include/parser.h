@@ -15,6 +15,8 @@ typedef struct command {
 
 Command *parse_tokens(const TokenList *tokens);
 void free_command(Command *cmd);
+void free_pipeline(Command *head);
 void print_command(const Command *cmd);
+int pipeline_count(Command *head);
 
 #endif

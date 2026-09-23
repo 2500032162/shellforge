@@ -5,7 +5,10 @@
 
 #define MAX_ARGS 64
 
-/* Function prototype */
+/* Execute a single command (builtin or external) */
 int execute_command(Command *cmd);
+
+/* Execute a full pipeline (single or multi-command) */
+int execute_pipeline(Command *head);
 
 #endif
