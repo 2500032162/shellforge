@@ -3,7 +3,6 @@
 
 #include "parser.h"
 
-/* Function prototypes */
 int is_builtin(const Command *cmd);
 int execute_builtin(Command *cmd);
 

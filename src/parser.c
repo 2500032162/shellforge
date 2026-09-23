@@ -48,7 +48,6 @@ Command *parse_tokens(const TokenList *tokens)
             add_word(current, curr->value);
         }
         else if (curr->type == TOKEN_PIPE) {
-            /* Finish current command, start a new one */
             current->next = create_command();
             current = current->next;
         }
@@ -72,6 +71,9 @@ Command *parse_tokens(const TokenList *tokens)
             }
         }
         else if (curr->type == TOKEN_AND) {
+            current->background = 1;
+        }
+        else if (curr->type == TOKEN_BACKGROUND) {
             current->background = 1;
         }
         else if (curr->type == TOKEN_SEMICOLON) {

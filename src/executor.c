@@ -6,14 +6,12 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <fcntl.h>
+#include <signal.h>
 
 #include "executor.h"
 #include "builtin.h"
+#include "../include/jobs.h"
 
-/*
- * Execute one command (builtin or external).
- * Returns: 0 success, -1 error, 1 exit shell
- */
 int execute_command(Command *cmd)
 {
     pid_t pid;
@@ -22,11 +20,9 @@ int execute_command(Command *cmd)
     if (cmd == NULL || cmd->argc == 0)
         return -1;
 
-    /* Builtin? Handle in-process */
     if (is_builtin(cmd))
         return execute_builtin(cmd);
 
-    /* External command */
     pid = fork();
     if (pid < 0) {
         perror("fork");
@@ -34,7 +30,8 @@ int execute_command(Command *cmd)
     }
 
     if (pid == 0) {
-        /* Child: handle input redirection */
+        setpgid(0, 0);
+
         if (cmd->input) {
             int fd = open(cmd->input, O_RDONLY);
             if (fd < 0) {
@@ -45,7 +42,6 @@ int execute_command(Command *cmd)
             close(fd);
         }
 
-        /* Child: handle output redirection */
         if (cmd->output) {
             int flags = O_CREAT | O_WRONLY |
                         (cmd->append ? O_APPEND : O_TRUNC);
@@ -58,20 +54,41 @@ int execute_command(Command *cmd)
             close(fd);
         }
 
-        /* Build args array */
         char *args[MAX_ARGS + 1];
         for (int i = 0; i < cmd->argc; i++)
             args[i] = cmd->argv[i];
         args[cmd->argc] = NULL;
 
         execvp(args[0], args);
-
-        /* If execvp returns, it failed */
         fprintf(stderr, "shellforge: command not found: %s\n", args[0]);
         _exit(127);
     }
 
-    /* Parent: wait for child */
+    setpgid(pid, pid);
+
+    if (cmd->background) {
+        char command_string[MAX_JOB_COMMAND];
+        int pos = 0;
+        for (int i = 0; i < cmd->argc && pos < MAX_JOB_COMMAND - 2; i++) {
+            int n = snprintf(command_string + pos,
+                             MAX_JOB_COMMAND - pos,
+                             "%s%s",
+                             cmd->argv[i],
+                             (i < cmd->argc - 1) ? " " : "");
+            pos += n;
+        }
+        if (pos < MAX_JOB_COMMAND - 2) {
+            command_string[pos++] = ' ';
+            command_string[pos++] = '&';
+            command_string[pos] = '\0';
+        }
+
+        int job_id = job_add(pid, command_string, JOB_RUNNING);
+        if (job_id > 0)
+            printf("[%d] %d\n", job_id, pid);
+        return 0;
+    }
+
     if (waitpid(pid, &status, 0) == -1) {
         perror("waitpid");
         return -1;
@@ -89,10 +106,6 @@ int execute_command(Command *cmd)
     return 0;
 }
 
-/*
- * Execute a pipeline: cmd1 | cmd2 | ... | cmdN
- * Uses pipe(), fork(), dup2(), waitpid().
- */
 int execute_pipeline(Command *head)
 {
     if (head == NULL)
@@ -100,20 +113,19 @@ int execute_pipeline(Command *head)
 
     int count = pipeline_count(head);
 
-    /* No pipe → single command */
     if (count == 1)
         return execute_command(head);
 
-    /* Multi-command pipeline */
-    int prev_read = -1;        /* read end of previous pipe */
+    int prev_read = -1;
     Command *cmd = head;
-    pid_t last_pid = -1;
-    int status = 0;
+    pid_t first_pid = -1;
+    int is_background = head->background;
+    pid_t pids[MAX_ARGS];
+    int status;
 
     for (int i = 0; i < count; i++) {
         int pipefd[2] = {-1, -1};
 
-        /* Create a pipe for every command except the last */
         if (i < count - 1) {
             if (pipe(pipefd) < 0) {
                 perror("pipe");
@@ -128,22 +140,21 @@ int execute_pipeline(Command *head)
         }
 
         if (pid == 0) {
-            /* ---- CHILD ---- */
+            if (i == 0)
+                setpgid(0, 0);
+            else
+                setpgid(0, first_pid);
 
-            /* Input: from previous pipe (unless first command) */
             if (prev_read != -1) {
                 dup2(prev_read, STDIN_FILENO);
                 close(prev_read);
             }
-
-            /* Output: to current pipe (unless last command) */
             if (i < count - 1) {
-                close(pipefd[0]);           /* close read end */
+                close(pipefd[0]);
                 dup2(pipefd[1], STDOUT_FILENO);
                 close(pipefd[1]);
             }
 
-            /* Apply file redirection if any (overrides pipe) */
             if (cmd->input) {
                 int fd = open(cmd->input, O_RDONLY);
                 if (fd >= 0) {
@@ -161,42 +172,45 @@ int execute_pipeline(Command *head)
                 }
             }
 
-            /* Build args and exec */
             char *args[MAX_ARGS + 1];
             for (int k = 0; k < cmd->argc; k++)
                 args[k] = cmd->argv[k];
             args[cmd->argc] = NULL;
 
             execvp(args[0], args);
-
             fprintf(stderr, "shellforge: command not found: %s\n", args[0]);
             _exit(127);
         }
 
-        /* ---- PARENT ---- */
+        if (i == 0) {
+            first_pid = pid;
+            setpgid(pid, pid);
+        } else {
+            setpgid(pid, first_pid);
+        }
 
-        /* Close previous read end (already handed to child) */
-        if (prev_read != -1)
-            close(prev_read);
+        pids[i] = pid;
 
-        /* Close current pipe's write end (child owns it) */
-        if (i < count - 1)
-            close(pipefd[1]);
-
-        /* Save read end for next command */
+        if (prev_read != -1) close(prev_read);
+        if (i < count - 1)   close(pipefd[1]);
         prev_read = (i < count - 1) ? pipefd[0] : -1;
-
-        if (i == count - 1)
-            last_pid = pid;
 
         cmd = cmd->next;
     }
 
-    /* Wait for all children */
+    if (is_background) {
+        char command_string[MAX_JOB_COMMAND];
+        snprintf(command_string, sizeof(command_string), "%s ...", head->argv[0]);
+        int job_id = job_add(first_pid, command_string, JOB_RUNNING);
+        if (job_id > 0)
+            printf("[%d] %d\n", job_id, first_pid);
+        return 0;
+    }
+
     int last_status = 0;
     for (int i = 0; i < count; i++) {
-        pid_t w = wait(&status);
-        if (w == last_pid && WIFEXITED(status))
+        waitpid(pids[i], &status, 0);
+        if (i == count - 1 && WIFEXITED(status))
             last_status = WEXITSTATUS(status);
     }
 

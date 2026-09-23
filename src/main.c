@@ -10,6 +10,7 @@
 #include "expand.h"
 #include "builtin.h"
 #include "executor.h"
+#include "jobs.h"
 
 int main(void)
 {
@@ -17,6 +18,8 @@ int main(void)
     printf("      Shellforge \n");
     printf(" A Unix Style Shell written in C\n");
     printf("=====================================\n");
+
+    jobs_init();
 
     char *line;
 
@@ -32,7 +35,6 @@ int main(void)
             continue;
         }
 
-        /* history command */
         if (strcmp(line, "history") == 0) {
             printf("Command history feature\n");
             free(line);
@@ -41,53 +43,18 @@ int main(void)
 
         add_history(line);
 
-        /* exit command */
         if (strcmp(line, "exit") == 0) {
-            TokenList *tokens = tokenize(line);
-            if (tokens) {
-                print_tokens(tokens);
-                Command *cmd = parse_tokens(tokens);
-                if (cmd) {
-                    print_command(cmd);
-                    execute_builtin(cmd);
-                    free_pipeline(cmd);
-                    free_token_list(tokens);
-                    free(line);
-                    printf("Exiting...\n");
-                    return 0;
-                }
-                free_token_list(tokens);
-            }
-            free(line);
             printf("Exiting...\n");
+            free(line);
             break;
         }
 
-        /* Tokenize */
         TokenList *tokens = tokenize(line);
         if (tokens) {
-            print_tokens(tokens);
-
-            /* Parse into pipeline list */
             Command *head = parse_tokens(tokens);
             if (head) {
-                print_command(head);
-
-                /* Check if the FIRST command is builtin exit */
-                int is_exit = (head->argc > 0 &&
-                               strcmp(head->argv[0], "exit") == 0);
-
-                /* Execute pipeline */
                 execute_pipeline(head);
-
                 free_pipeline(head);
-
-                if (is_exit) {
-                    free_token_list(tokens);
-                    free(line);
-                    printf("Exiting...\n");
-                    return 0;
-                }
             }
             free_token_list(tokens);
         }

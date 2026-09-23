@@ -35,11 +35,9 @@ TokenList *tokenize(const char *input) {
 
     const char *p = input;
     while (*p) {
-        // Skip whitespace
         while (*p && isspace(*p)) p++;
         if (!*p) break;
 
-        // Handle operators
         if (*p == '|') {
             append_token(list, create_token(TOKEN_PIPE, "|"));
             p++;
@@ -65,6 +63,7 @@ TokenList *tokenize(const char *input) {
                 append_token(list, create_token(TOKEN_AND, "&&"));
                 p += 2;
             } else {
+                append_token(list, create_token(TOKEN_BACKGROUND, "&"));
                 p++;
             }
             continue;
@@ -75,10 +74,10 @@ TokenList *tokenize(const char *input) {
             continue;
         }
 
-        // Handle words
         if (isalnum(*p) || *p == '_' || *p == '-' || *p == '.' || *p == '/') {
             const char *start = p;
-            while (*p && (isalnum(*p) || *p == '_' || *p == '-' || *p == '.' || *p == '/' || *p == '=' || *p == '~')) p++;
+            while (*p && (isalnum(*p) || *p == '_' || *p == '-' || *p == '.' ||
+                          *p == '/' || *p == '=' || *p == '~')) p++;
             char *word = malloc(p - start + 1);
             strncpy(word, start, p - start);
             word[p - start] = '\0';
@@ -87,11 +86,9 @@ TokenList *tokenize(const char *input) {
             continue;
         }
 
-        // Skip unknown characters
         p++;
     }
 
-    // Add END token
     append_token(list, create_token(TOKEN_END, "END"));
 
     return list;
@@ -114,6 +111,7 @@ void print_tokens(const TokenList *tokens) {
             case TOKEN_AND: type_str = "AND"; break;
             case TOKEN_OR: type_str = "OR"; break;
             case TOKEN_SEMICOLON: type_str = "SEMICOLON"; break;
+            case TOKEN_BACKGROUND: type_str = "BACKGROUND"; break;
             case TOKEN_END: type_str = "END"; break;
             default: type_str = "UNKNOWN";
         }
